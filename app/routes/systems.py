@@ -63,26 +63,22 @@ async def deploy_system_endpoint(
 @router.get("", response_model=List[SystemResponse])
 async def list_systems(
     db: AsyncSession = Depends(get_db),
-    status: str = None,
-    category: str = None
+    status: str = None
 ):
     """
     List all systems with optional filtering
-    
+
     Query parameters:
     - status: Filter by status (scaffold, deployed, active, inactive)
-    - category: Filter by category (signals, pipeline, content, operations)
     """
     query = select(SystemDB)
-    
+
     if status:
         query = query.where(SystemDB.status == status)
-    if category:
-        query = query.where(SystemDB.category == category)
-    
+
     result = await db.execute(query)
     systems = result.scalars().all()
-    
+
     return [SystemResponse.model_validate(s) for s in systems]
 
 
@@ -113,13 +109,12 @@ async def update_system_endpoint(
 ):
     """
     Update system metadata
-    
+
     Updatable fields:
     - name: Display name
-    - category: System category (signals, pipeline, content, operations)
     - description: System description
     - status: System status (scaffold, deployed, active, inactive)
-    
+
     Note: slug and api_key cannot be changed
     """
     try:

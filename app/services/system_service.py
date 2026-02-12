@@ -82,11 +82,10 @@ def fastapi_app():
 '''
 
 
-def generate_readme_template(slug: str, name: str, description: str, category: str) -> str:
+def generate_readme_template(slug: str, name: str, description: str) -> str:
     """Generate templated README.md for system"""
     return f'''# {name}
 
-**Category:** {category}  
 **Slug:** `{slug}`
 
 ## Description
@@ -161,16 +160,14 @@ async def create_system(db: AsyncSession, system_data: SystemCreate) -> SystemRe
     readme_content = generate_readme_template(
         system_data.slug,
         system_data.name,
-        system_data.description,
-        system_data.category
+        system_data.description
     )
     (system_dir / "README.md").write_text(readme_content)
-    
+
     # Create database record
     db_system = SystemDB(
         slug=system_data.slug,
         name=system_data.name,
-        category=system_data.category,
         description=system_data.description,
         api_key=api_key,
         status="scaffold",
