@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = ""
     github_token: str = ""
     github_repo: str = "bencrane/ea.systems-backend-api"
+    gemini_api_key: str = ""
 
     class Config:
         env_file = ".env"

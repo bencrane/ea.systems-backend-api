@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
+import httpx
 from app.database import get_db
 from app.models.system import SystemCreate, SystemUpdate, SystemResponse, SystemDB
 from app.services.system_service import create_system, deploy_system, update_system, delete_system
+from app.services.chat_service import ChatRequest, ChatResponse, handle_chat_message
 
 router = APIRouter(prefix="/systems", tags=["systems"])
 
@@ -58,6 +60,37 @@ async def deploy_system_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
+
+
+@router.post("/{slug}/chat", response_model=ChatResponse)
+async def chat_with_system(
+    slug: str,
+    payload: ChatRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    AI-powered intake chat for a system.
+
+    Fetches the system's input schema from its Modal OpenAPI spec,
+    then uses Gemini to conversationally collect all required fields.
+
+    When all inputs are gathered and confirmed, the response will contain:
+    {"ready": true, "payload": {...}}
+    """
+    try:
+        return await handle_chat_message(db, slug, payload)
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch system schema from Modal: {e.response.status_code}",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
 
 
 @router.get("", response_model=List[SystemResponse])

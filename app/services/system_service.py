@@ -9,6 +9,7 @@ from sqlalchemy import select
 import httpx
 from app.models.system import SystemDB, SystemCreate, SystemUpdate, SystemResponse
 from app.config import settings
+from app.services.chat_service import invalidate_schema_cache
 
 
 def generate_api_key() -> str:
@@ -19,6 +20,7 @@ def generate_api_key() -> str:
 def generate_main_py_template(slug: str, api_key: str) -> str:
     """Generate templated main.py for Modal function"""
     return f'''import modal
+import os
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Any
@@ -69,7 +71,7 @@ async def handler(
     )
 
 
-@app.function()
+@app.function(secrets=[modal.Secret.from_name("ea-secrets")])
 @modal.asgi_app()
 def fastapi_app():
     return web_app
@@ -265,6 +267,9 @@ async def deploy_system(db: AsyncSession, slug: str) -> SystemResponse:
         system.status = "deployed"
         await db.flush()
         await db.refresh(system)
+
+        # Bust the schema cache so the chat endpoint picks up any new schema
+        invalidate_schema_cache(slug)
 
         return SystemResponse.model_validate(system)
 
