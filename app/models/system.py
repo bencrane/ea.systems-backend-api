@@ -18,6 +18,7 @@ class SystemDB(Base):
     modal_url = Column(Text, nullable=True)
     api_key = Column(String(255), nullable=False)
     status = Column(String(50), nullable=False, default="scaffold")
+    chat_context = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

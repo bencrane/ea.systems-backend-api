@@ -6,7 +6,7 @@ import httpx
 from app.database import get_db
 from app.models.system import SystemCreate, SystemUpdate, SystemResponse, SystemDB
 from app.services.system_service import create_system, deploy_system, update_system, delete_system
-from app.services.chat_service import ChatRequest, ChatResponse, handle_chat_message
+from app.services.chat_service import ChatRequest, ChatResponse, IntroResponse, handle_chat_message, handle_intro_message
 
 router = APIRouter(prefix="/systems", tags=["systems"])
 
@@ -91,6 +91,33 @@ async def chat_with_system(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+
+
+@router.get("/{slug}/intro", response_model=IntroResponse)
+async def get_system_intro(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get a welcome message for a system's chat interface.
+
+    Returns a generated intro message based on the system's chat_context and schema.
+    Call this when the chat page loads to display the first message.
+    """
+    try:
+        return await handle_intro_message(db, slug)
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch system schema from Modal: {e.response.status_code}",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Intro generation failed: {str(e)}")
 
 
 @router.get("", response_model=List[SystemResponse])

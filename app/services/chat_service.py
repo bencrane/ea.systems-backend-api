@@ -92,8 +92,7 @@ async def _fetch_input_schema(modal_url: str, slug: str) -> dict:
 # Gemini prompt
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """You are an intake assistant for the "{system_name}" system. \
-Your job is to collect all required inputs from the user through a natural, conversational chat.
+_SYSTEM_PROMPT = """{chat_context}
 
 Here is the JSON Schema describing the inputs you need to collect:
 
@@ -114,13 +113,13 @@ Rules:
 
 {{"ready": true, "payload": {{ ... }}}}
 
-The payload must conform to the schema (correct types, enum values, etc.). Do NOT include client_id — it is added automatically.
-10. Start by greeting the user briefly and asking about the first required field."""
+The payload must conform to the schema (correct types, enum values, etc.). Do NOT include client_id — it is added automatically."""
 
 
-def _build_system_prompt(system_name: str, schema: dict) -> str:
+def _build_system_prompt(chat_context: str, schema: dict) -> str:
+    default_context = "You are an intake assistant. Your job is to collect all required inputs from the user through a natural, conversational chat."
     return _SYSTEM_PROMPT.format(
-        system_name=system_name,
+        chat_context=chat_context or default_context,
         schema_json=json.dumps(schema, indent=2),
     )
 
@@ -143,6 +142,10 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     system_slug: str
+
+
+class IntroResponse(BaseModel):
+    message: str
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +176,7 @@ async def handle_chat_message(
     genai.configure(api_key=settings.gemini_api_key)
     model = genai.GenerativeModel(
         GEMINI_MODEL,
-        system_instruction=_build_system_prompt(system.name, schema),
+        system_instruction=_build_system_prompt(system.chat_context, schema),
     )
 
     # 4. Build conversation history in Gemini's format
@@ -190,3 +193,40 @@ async def handle_chat_message(
         response=response.text,
         system_slug=slug,
     )
+
+
+async def handle_intro_message(
+    db: AsyncSession,
+    slug: str,
+) -> IntroResponse:
+    """Generate a welcome message for the system."""
+
+    # 1. Resolve system from DB
+    result = await db.execute(
+        select(SystemDB).where(SystemDB.slug == slug)
+    )
+    system = result.scalar_one_or_none()
+    if not system:
+        raise ValueError(f"System '{slug}' not found")
+    if not system.modal_url:
+        raise ValueError(f"System '{slug}' has not been deployed yet")
+
+    # 2. Fetch schema
+    schema = await _fetch_input_schema(system.modal_url, slug)
+
+    # 3. Configure Gemini
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel(GEMINI_MODEL)
+
+    # 4. Generate intro message
+    prompt = f"""{system.chat_context or "You are an intake assistant."}
+
+Here is the input schema for this system:
+{json.dumps(schema, indent=2)}
+
+Generate a single, friendly welcome message introducing yourself and what you help with.
+Ask about the first required field to get started. Keep it concise (2-3 sentences max)."""
+
+    response = model.generate_content(prompt)
+
+    return IntroResponse(message=response.text)
